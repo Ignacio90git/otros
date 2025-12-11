@@ -1,0 +1,23 @@
+// Decompiled with JetBrains decompiler
+// Type: BA.Certificados.Extensions
+// Assembly: BA.Certificados, Version=3.2.2.4, Culture=neutral, PublicKeyToken=null
+// MVID: CEE096EC-AC0B-4E62-9681-864D65110019
+// Assembly location: C:\Users\Admin\Documents\er\BA.Certificados.dll
+
+#nullable disable
+namespace BA.Certificados;
+
+public static class Extensions
+{
+  public static int CountLines(this string text)
+  {
+    int num = 0;
+    if (!string.IsNullOrEmpty(text))
+    {
+      num = text.Length - text.Replace("\n", string.Empty).Length;
+      if (text[text.Length - 1] != '\n')
+        ++num;
+    }
+    return num;
+  }
+}
