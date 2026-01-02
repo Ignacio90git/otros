@@ -1,0 +1,421 @@
+// Decompiled with JetBrains decompiler
+// Type: BA.Certificados.CertUtils
+// Assembly: BA.Certificados, Version=3.2.2.4, Culture=neutral, PublicKeyToken=null
+// MVID: CEE096EC-AC0B-4E62-9681-864D65110019
+// Assembly location: C:\Users\Admin\Documents\er\BA.Certificados.dll
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+using System.Security.Principal;
+using System.Text;
+
+#nullable disable
+namespace BA.Certificados;
+
+public static class CertUtils
+{
+  private const string directoryCert = "C:\\Biocheck\\Certificados";
+  private const string logFile = "C:\\Biocheck\\InstaladorCertificados.log";
+  private const string appId = "12345678-db90-4b66-8b01-88f7af2e36bf";
+  private const string certificatePassword = "Facil1234";
+  private const string certificatePasswordSantander = "Bi0ch3ckhub2022";
+  private const string signalHubUrl = "https://biocheckhub.santander.mx.corp:8082/signalr/hubs";
+  private const int maxConnectionAttempts = 3;
+  private static object syncObj = new object();
+
+  public static void Install()
+  {
+    CertUtils.StartLog();
+    bool success;
+    try
+    {
+      CertUtils.CheckAdmin();
+      CertUtils.addValueToHostFile();
+      CertUtils.InstallCertificates();
+      CertUtils.InstallCertificatesSantander();
+      int num = 0;
+      bool flag1;
+      bool flag2;
+      do
+      {
+        ++num;
+        CertUtils.LogToFile($"Intentando conectar a {"https://biocheckhub.santander.mx.corp:8082/signalr/hubs"} [Intento {num} de {3}]...");
+        try
+        {
+          WebClient webClient = new WebClient();
+          ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+          string str = webClient.DownloadString("https://biocheckhub.santander.mx.corp:8082/signalr/hubs");
+          if (str.CountLines() < 100)
+            throw new Exception(str);
+          flag1 = true;
+        }
+        catch (WebException ex)
+        {
+          flag1 = false;
+        }
+        CertUtils.LogToFile($"Intento de conexión = {flag1}");
+        flag2 = !flag1 && num < 3;
+        if (flag2)
+          CertUtils.InstallCertificates();
+      }
+      while (flag2);
+      if (!flag1)
+        throw new Exception("No se pudo conectar al hub de SignalR con los certificados actuales");
+      success = true;
+    }
+    catch (Exception ex)
+    {
+      success = false;
+      CertUtils.LogToFile($"Error => {ex}");
+    }
+    CertUtils.EndLog(success);
+  }
+
+  public static void addValueToHostFile()
+  {
+    try
+    {
+      if (System.IO.File.ReadAllText("C:\\Windows\\System32\\drivers\\etc\\hosts").Contains("biocheckhub.santander.mx.corp"))
+        return;
+      System.IO.File.AppendAllText("C:\\Windows\\System32\\drivers\\etc\\hosts", "\n127.0.0.1 biocheckhub.santander.mx.corp localhost\n");
+    }
+    catch (Exception ex)
+    {
+    }
+  }
+
+  private static void InstallCertificates()
+  {
+    if (!Directory.Exists("C:\\Biocheck\\Certificados"))
+      throw new Exception("El directorio C:\\Biocheck\\Certificados no existe");
+    string str1 = Path.Combine("C:\\Biocheck\\Certificados", "BACertIdentitumServer.pfx");
+    string str2 = Path.Combine("C:\\Biocheck\\Certificados", "BACertIdentitumMD5.pfx");
+    string str3 = Path.Combine("C:\\Biocheck\\Certificados", "BABiocheckFull.pfx");
+    string thumbPrint1 = "";
+    string thumbPrint2 = "";
+    string thumbPrint3 = "";
+    string message1 = "";
+    CertUtils.LogToFile($"Agregando certificado {Path.GetFileName(str1)} al certstore My...");
+    string thumbPrint4;
+    if (CertUtils.ImportMyPfx(str1, "Facil1234", out message1, out thumbPrint4) > 0)
+      throw new Exception(message1);
+    CertUtils.LogToFile(message1);
+    string message2 = "";
+    CertUtils.LogToFile($"Agregando certificado {Path.GetFileName(str1)} al certstore Root...");
+    if (CertUtils.ImportRootPfx(str1, "Facil1234", out message2, out thumbPrint1) > 0)
+      throw new Exception(message2);
+    CertUtils.LogToFile(message2);
+    string message3 = "";
+    CertUtils.LogToFile($"Agregando certificado {Path.GetFileName(str2)} al certstore My...");
+    if (CertUtils.ImportMyPfx(str2, "Facil1234", out message3, out thumbPrint4) > 0)
+      throw new Exception(message3);
+    CertUtils.LogToFile(message3);
+    string message4 = "";
+    CertUtils.LogToFile($"Agregando certificado {Path.GetFileName(str2)} al certstore Root...");
+    if (CertUtils.ImportRootPfx(str2, "Facil1234", out message4, out thumbPrint2) > 0)
+      throw new Exception(message4);
+    CertUtils.LogToFile(message4);
+    string message5 = "";
+    CertUtils.LogToFile($"Agregando certificado {Path.GetFileName(str3)} al certstore My...");
+    if (CertUtils.ImportMyPfx(str3, "Facil1234", out message5, out thumbPrint4) > 0)
+      throw new Exception(message5);
+    CertUtils.LogToFile(message5);
+    string message6 = "";
+    CertUtils.LogToFile($"Agregando certificado {Path.GetFileName(str3)} al certstore Root...");
+    if (CertUtils.ImportRootPfx(str3, "Facil1234", out message6, out thumbPrint3) > 0)
+      throw new Exception(message6);
+    CertUtils.LogToFile(message6);
+    string message7 = "";
+    CertUtils.LogToFile($"Agregando certificado {thumbPrint3} al puerto 8082 mediante hostnameport...");
+    if (CertUtils.BindPfxHost(thumbPrint3, "localhost", 8082, "12345678-db90-4b66-8b01-88f7af2e36bf", out message7) > 0)
+      CertUtils.LogToFile($"Error HostnamePort => {message7}.");
+    else
+      CertUtils.LogToFile(message7);
+  }
+
+  private static void InstallCertificatesSantander()
+  {
+    if (!Directory.Exists("C:\\Biocheck\\Certificados"))
+      throw new Exception("El directorio C:\\Biocheck\\Certificados no existe");
+    string str = Path.Combine("C:\\Biocheck\\Certificados", "biocheckhub_santander_mx_corp.p12");
+    string thumbPrint = "";
+    string message1 = "";
+    CertUtils.LogToFile($"Agregando certificado {Path.GetFileName(str)} al certstore My...");
+    if (CertUtils.ImportMyPfx(str, "Bi0ch3ckhub2022", out message1, out thumbPrint) > 0)
+      throw new Exception(message1);
+    CertUtils.LogToFile(message1);
+    string message2 = "";
+    CertUtils.LogToFile($"Agregando certificado {Path.GetFileName(str)} al certstore Root...");
+    if (CertUtils.ImportRootPfx(str, "Bi0ch3ckhub2022", out message2, out thumbPrint) > 0)
+      throw new Exception(message2);
+    CertUtils.LogToFile(message2);
+    message2 = "";
+    CertUtils.LogToFile($"Agregando certificado {thumbPrint} al puerto 8082 mediante ipport...");
+    if (CertUtils.BindPfxIp(thumbPrint, "127.0.0.1", 8082, "12345678-db90-4b66-8b01-88f7af2e36bf", out message2) > 0)
+      CertUtils.LogToFile("Error IpPort => " + message2);
+    else
+      CertUtils.LogToFile(message2);
+    message2 = "";
+    message2 = "";
+    CertUtils.LogToFile($"Agregando certificado {thumbPrint} al puerto 8082 mediante hostnameport...");
+    if (CertUtils.BindPfxHost(thumbPrint, "biocheckhub.santander.mx.corp", 8082, "12345678-db90-4b66-8b01-88f7af2e36bf", out message2) > 0)
+      CertUtils.LogToFile($"Error HostnamePort => {message2}.");
+    else
+      CertUtils.LogToFile(message2);
+  }
+
+  private static int ImportMyPfx(
+    string certPath,
+    string password,
+    out string message,
+    out string thumbPrint)
+  {
+    return CertUtils.ImportPfx(certPath, password, StoreName.My, out message, out thumbPrint);
+  }
+
+  private static int ImportRootPfx(
+    string certPath,
+    string password,
+    out string message,
+    out string thumbPrint)
+  {
+    return CertUtils.ImportPfx(certPath, password, StoreName.Root, out message, out thumbPrint);
+  }
+
+  private static int BindPfxIp(
+    string thumbPrint,
+    string ipAddress,
+    int port,
+    string appId,
+    out string message)
+  {
+    message = "";
+    StringBuilder stringBuilder = new StringBuilder();
+    string[] strArray = ipAddress.Split(',');
+    int num = 0;
+    foreach (string bindingAddress in strArray)
+    {
+      string message1;
+      num += CertUtils.BindPfx(thumbPrint, bindingAddress, port, CertUtils.BindingType.IpPort, appId, out message1);
+      stringBuilder.AppendLine(message1);
+    }
+    message = stringBuilder.ToString();
+    return num;
+  }
+
+  private static int BindPfxHost(
+    string thumbPrint,
+    string hostName,
+    int port,
+    string appId,
+    out string message)
+  {
+    message = "";
+    StringBuilder stringBuilder = new StringBuilder();
+    string[] strArray = hostName.Split(',');
+    int num = 0;
+    foreach (string bindingAddress in strArray)
+    {
+      string message1;
+      num += CertUtils.BindPfx(thumbPrint, bindingAddress, port, CertUtils.BindingType.HostName, appId, out message1);
+      stringBuilder.AppendLine(message1);
+    }
+    message = stringBuilder.ToString();
+    return num;
+  }
+
+  private static int BindPfx(
+    string thumbPrint,
+    string bindingAddress,
+    int port,
+    CertUtils.BindingType bindingType,
+    string appId,
+    out string message)
+  {
+    message = "";
+    int num;
+    try
+    {
+      string str1;
+      if (bindingType != CertUtils.BindingType.IpPort)
+      {
+        if (bindingType != CertUtils.BindingType.HostName)
+          throw new Exception($"Tipo de binding {bindingType} no válido");
+        str1 = "hostnameport";
+      }
+      else
+        str1 = "ipport";
+      StringBuilder stringBuilder1 = new StringBuilder();
+      ProcessStartInfo startInfo = new ProcessStartInfo()
+      {
+        CreateNoWindow = true,
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        FileName = "netsh"
+      };
+      startInfo.Arguments = $"http show sslcert {str1}={bindingAddress}:{port}";
+      Process process1 = Process.Start(startInfo);
+      while (process1 != null && !process1.StandardOutput.EndOfStream)
+      {
+        string str2 = process1.StandardOutput.ReadLine();
+        stringBuilder1.AppendLine(str2);
+      }
+      startInfo.Arguments = $"http delete sslcert {str1}={bindingAddress}:{port}";
+      Process process2 = Process.Start(startInfo);
+      while (process2 != null && !process2.StandardOutput.EndOfStream)
+      {
+        string str3 = process2.StandardOutput.ReadLine();
+        stringBuilder1.AppendLine(str3);
+      }
+      process2?.WaitForExit(1000);
+      startInfo.Arguments = $"http add sslcert {str1}={bindingAddress}:{port} certhash={thumbPrint.ToLower()} certstorename=Root appid={{{appId}}}";
+      Process process3 = Process.Start(startInfo);
+      while (process3 != null && !process3.StandardOutput.EndOfStream)
+      {
+        string str4 = process3.StandardOutput.ReadLine();
+        stringBuilder1.AppendLine(str4);
+      }
+      startInfo.Arguments = $"http show sslcert {str1}={bindingAddress}:{port}";
+      Process process4 = Process.Start(startInfo);
+      StringBuilder stringBuilder2 = new StringBuilder();
+      while (process4 != null && !process4.StandardOutput.EndOfStream)
+      {
+        string str5 = process4.StandardOutput.ReadLine();
+        stringBuilder2.AppendLine(str5);
+        stringBuilder1.AppendLine(str5);
+      }
+      string str6 = stringBuilder2.ToString();
+      if (str6.CountLines() < 10)
+        throw new Exception(str6);
+      num = 0;
+      message = stringBuilder1.ToString();
+    }
+    catch (Exception ex)
+    {
+      num = 1;
+      message = ex.ToString();
+    }
+    return num;
+  }
+
+  private static int ImportPfx(
+    string certPath,
+    string password,
+    StoreName keyStore,
+    out string message,
+    out string thumbPrint)
+  {
+    message = "";
+    thumbPrint = "";
+    int num;
+    try
+    {
+      FileInfo fileInfo = new FileInfo(certPath);
+      if (!fileInfo.Exists)
+        throw new Exception("No existe el archivo " + fileInfo.FullName);
+      X509Certificate2 certificate1 = new X509Certificate2(fileInfo.FullName, password, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
+      X509Store store = new X509Store(keyStore, StoreLocation.LocalMachine);
+      store.Open(OpenFlags.ReadWrite);
+      try
+      {
+        List<X509Certificate2> certificates;
+        if (CertUtils.ExisteCertificado(certificate1.Thumbprint, store, out certificates))
+        {
+          foreach (X509Certificate2 certificate2 in certificates)
+            store.Remove(certificate2);
+        }
+      }
+      catch (Exception ex)
+      {
+      }
+      store.Add(certificate1);
+      if (!CertUtils.ExisteCertificado(certificate1.Thumbprint, store, out List<X509Certificate2> _))
+        throw new Exception($"No se logró agregar el certificado {fileInfo.Name} con hash {thumbPrint} al keystore {keyStore}");
+      num = 0;
+      thumbPrint = certificate1.Thumbprint;
+      message = $"Certificado {fileInfo.Name} con hash {thumbPrint} agregado correctamente al keystore {keyStore}";
+    }
+    catch (Exception ex)
+    {
+      num = 1;
+      message = ex.ToString();
+      thumbPrint = "";
+    }
+    return num;
+  }
+
+  private static bool ExisteCertificado(
+    string thumbPrint,
+    X509Store store,
+    out List<X509Certificate2> certificates)
+  {
+    certificates = new List<X509Certificate2>();
+    try
+    {
+      X509Certificate2Collection source = store.Certificates.Find(X509FindType.FindByThumbprint, (object) thumbPrint, false);
+      if (source != null)
+      {
+        if (source.Count > 0)
+          certificates = source.Cast<X509Certificate2>().ToList<X509Certificate2>();
+      }
+    }
+    catch (Exception ex)
+    {
+    }
+    return certificates.Any<X509Certificate2>();
+  }
+
+  private static void StartLog()
+  {
+    CertUtils.LogToFile(string.Format("------------------------------------------------------------------------------ \r\nCreación del log: {0:dd/MM/yyyy HH:mm:ss.fff}\r\n------------------------------------------------------------------------------ ", (object) DateTime.Now), false);
+  }
+
+  private static void EndLog(bool success)
+  {
+    CertUtils.LogToFile("Proceso finalizado " + (success ? "correctamente" : "con errores"));
+  }
+
+  private static void LogToFile(string text, bool logDateTime = true)
+  {
+    try
+    {
+      if (logDateTime)
+        text = $"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")}: {text}";
+      lock (CertUtils.syncObj)
+      {
+        using (StreamWriter streamWriter = new StreamWriter("C:\\Biocheck\\InstaladorCertificados.log", true))
+          streamWriter.WriteLine(text);
+      }
+    }
+    catch (Exception ex)
+    {
+    }
+  }
+
+  private static void CheckAdmin()
+  {
+    try
+    {
+      using (WindowsIdentity current = WindowsIdentity.GetCurrent())
+      {
+        if (!new WindowsPrincipal(current).IsInRole(WindowsBuiltInRole.Administrator))
+          throw new Exception($"El usuario {current.Name} no es administrador");
+      }
+    }
+    catch (Exception ex)
+    {
+      throw new Exception("Error al comprobar permisos de administrador => " + ex.Message, ex);
+    }
+  }
+
+  private enum BindingType
+  {
+    IpPort,
+    HostName,
+  }
+}
